@@ -1,13 +1,13 @@
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
-import { Document as LangchainDocument } from "langchain/document";
+import { Document as LangchainDocument } from "@langchain/core/documents";
 import { supabase } from "@/lib/db/supabase";
 import { db } from "@/lib/db/supabase";
 import { brandDocuments, documentChunks } from "@/lib/db/drizzle-schema";
 import { eq } from "drizzle-orm";
-import { PDFLoader } from "langchain/document_loaders/fs/pdf";
-import { CSVLoader } from "langchain/document_loaders/fs/csv";
-import { DocxLoader } from "langchain/document_loaders/fs/docx";
+import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
+import { CSVLoader } from "@langchain/community/document_loaders/fs/csv";
+import { DocxLoader } from "@langchain/community/document_loaders/fs/docx";
 import * as XLSX from "xlsx";
 import { getEmbeddingModelWithFallback } from "@/lib/ai/embeddings";
 
@@ -66,19 +66,25 @@ export async function processDocument(documentId: string): Promise<{
       },
     }));
 
-    // Generate embeddings and store in vector database
-    // Uses EmbeddingGemma (768-dim) with fallback to OpenAI (1536-dim)
-    const embeddings = getEmbeddingModelWithFallback();
+    // Generate embeddings manually and store in database
+    const embeddingModel = getEmbeddingModelWithFallback();
 
-    await SupabaseVectorStore.fromDocuments(
-      enrichedChunks,
-      embeddings,
-      {
-        client: supabase,
-        tableName: "document_chunks",
-        queryName: "match_documents",
-      }
-    );
+    for (let i = 0; i < enrichedChunks.length; i++) {
+      const chunk = enrichedChunks[i];
+
+      // Generate embedding for this chunk
+      const embedding = await embeddingModel.embedQuery(chunk.pageContent);
+
+      // Insert into database
+      await db.insert(documentChunks).values({
+        documentId: document.id,
+        brandId: document.brandId,
+        chunkText: chunk.pageContent,
+        chunkIndex: i,
+        embedding: embedding,
+        metadata: chunk.metadata as any,
+      });
+    }
 
     // Update document status to completed
     await db

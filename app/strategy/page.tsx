@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useBrand } from "@/lib/brand-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Sparkles, Target, TrendingUp, Users, FileText, BarChart3 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Loader2, Sparkles, Target, TrendingUp, Users, FileText, BarChart3, Send, Database } from "lucide-react";
 
 interface AnnualStrategy {
   swotAnalysis: {
@@ -49,8 +51,52 @@ interface AnnualStrategy {
 export default function StrategyPage() {
   const { currentBrand } = useBrand();
   const [strategy, setStrategy] = useState<AnnualStrategy | null>(null);
+  const [strategyMetadata, setStrategyMetadata] = useState<{
+    strategyId?: string;
+    period?: { start: string; end: string; label: string };
+    generatedWithRag?: boolean;
+    documentCount?: number;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentTab, setCurrentTab] = useState("positioning");
+  const [followUpPrompt, setFollowUpPrompt] = useState("");
+  const [isModifying, setIsModifying] = useState(false);
+
+  // Load existing strategy on mount
+  useEffect(() => {
+    const loadExistingStrategy = async () => {
+      if (!currentBrand) return;
+
+      setInitialLoading(true);
+      try {
+        const response = await fetch(`/api/strategy/latest?brandId=${currentBrand.id}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.strategy) {
+            setStrategy(data.strategy.strategyData);
+            setStrategyMetadata({
+              strategyId: data.strategy.id,
+              period: {
+                start: data.strategy.startDate,
+                end: data.strategy.endDate,
+                label: `${new Date(data.strategy.startDate).getFullYear()} - ${new Date(data.strategy.endDate).getFullYear()}`,
+              },
+              generatedWithRag: data.strategy.generatedWithRag === 1,
+              documentCount: data.strategy.documentCount,
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load existing strategy:", error);
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+
+    loadExistingStrategy();
+  }, [currentBrand]);
 
   const generateStrategy = async () => {
     if (!currentBrand) return;
@@ -72,6 +118,12 @@ export default function StrategyPage() {
 
       const data = await response.json();
       setStrategy(data.strategy);
+      setStrategyMetadata({
+        strategyId: data.strategyId,
+        period: data.period,
+        generatedWithRag: data.generatedWithRag === 1,
+        documentCount: data.documentCount,
+      });
 
       // Save strategy to localStorage for use in monthly planning
       if (currentBrand) {
@@ -82,9 +134,44 @@ export default function StrategyPage() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
-      console.error("Strategy generation error:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFollowUpModification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!followUpPrompt.trim() || !strategy) return;
+
+    setIsModifying(true);
+    setError(null);
+
+    try {
+      // Call API to modify only the current tab
+      const response = await fetch("/api/strategy/modify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brandId: currentBrand?.id,
+          currentStrategy: strategy,
+          tab: currentTab,
+          modification: followUpPrompt,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to modify strategy");
+      }
+
+      const data = await response.json();
+
+      // Update only the modified section
+      setStrategy(data.strategy);
+      setFollowUpPrompt("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Modification failed");
+    } finally {
+      setIsModifying(false);
     }
   };
 
@@ -103,9 +190,50 @@ export default function StrategyPage() {
     );
   }
 
+  // Show skeleton while loading initial strategy
+  if (initialLoading) {
+    return (
+      <div className="p-8 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-9 w-64" />
+            <Skeleton className="h-5 w-48" />
+          </div>
+          <Skeleton className="h-10 w-32" />
+        </div>
+
+        <Card>
+          <CardContent className="pt-6">
+            <Skeleton className="h-10 w-full" />
+          </CardContent>
+        </Card>
+
+        <div className="space-y-4">
+          <Skeleton className="h-10 w-full" />
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-6 w-48" />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // Show generation card if no strategy exists
   if (!strategy) {
     return (
       <div className="p-8 max-w-3xl mx-auto">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-gray-900">
+            {currentBrand.brandName}
+          </h1>
+        </div>
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -170,7 +298,24 @@ export default function StrategyPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Annual Strategy</h1>
-          <p className="text-muted-foreground">{currentBrand.brandName}</p>
+          <div className="flex items-center gap-3 text-muted-foreground">
+            <span>{currentBrand.brandName}</span>
+            {strategyMetadata?.period && (
+              <>
+                <span>•</span>
+                <span className="text-sm">{strategyMetadata.period.label}</span>
+              </>
+            )}
+            {strategyMetadata?.generatedWithRag && (
+              <>
+                <span>•</span>
+                <div className="flex items-center gap-1 text-sm">
+                  <Database className="h-3 w-3" />
+                  <span>{strategyMetadata.documentCount} documents</span>
+                </div>
+              </>
+            )}
+          </div>
         </div>
         <Button onClick={generateStrategy} disabled={loading} variant="outline">
           {loading ? (
@@ -182,7 +327,31 @@ export default function StrategyPage() {
         </Button>
       </div>
 
-      <Tabs defaultValue="positioning" className="space-y-4">
+      {/* Follow-up Prompt Bar */}
+      <Card>
+        <CardContent className="pt-6">
+          <form onSubmit={handleFollowUpModification} className="flex gap-2">
+            <Input
+              placeholder={`Modify ${currentTab}... (e.g., "Add more focus on sustainability" or "Make it more aggressive")`}
+              value={followUpPrompt}
+              onChange={(e) => setFollowUpPrompt(e.target.value)}
+              disabled={isModifying}
+            />
+            <Button type="submit" disabled={isModifying || !followUpPrompt.trim()}>
+              {isModifying ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </form>
+          {error && (
+            <p className="text-sm text-destructive mt-2">{error}</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Tabs value={currentTab} onValueChange={setCurrentTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="positioning">Positioning</TabsTrigger>
           <TabsTrigger value="swot">SWOT Analysis</TabsTrigger>

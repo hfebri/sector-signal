@@ -1,7 +1,20 @@
-import { runStructuredPrompt } from "@/lib/replicate";
+import { runStructuredPrompt } from "./openai-client";
 import { monthlyPlanSchema } from "./schemas";
 import { BrandProfile } from "@/lib/db/schema";
 import { AnnualStrategy } from "./strategy-generator";
+import {
+  searchPerformanceData,
+  searchContentInsights,
+  searchAudienceInsights,
+} from "./vector-search";
+import {
+  buildPerformanceContext,
+  buildContentContext,
+  buildAudienceContext,
+} from "./context-builder";
+import { db } from "@/lib/db/supabase";
+import { brandDocuments } from "@/lib/db/drizzle-schema";
+import { eq, and } from "drizzle-orm";
 
 export interface MonthlyPlan {
   month: string;
@@ -25,6 +38,24 @@ export interface MonthlyPlan {
 }
 
 /**
+ * Check if brand has processed documents
+ */
+async function checkBrandHasDocuments(brandId: string): Promise<boolean> {
+  const docs = await db
+    .select()
+    .from(brandDocuments)
+    .where(
+      and(
+        eq(brandDocuments.brandId, brandId),
+        eq(brandDocuments.processingStatus, "completed")
+      )
+    )
+    .limit(1);
+
+  return docs.length > 0;
+}
+
+/**
  * Generate a monthly content plan based on annual strategy
  */
 export async function generateMonthlyPlan(
@@ -34,23 +65,40 @@ export async function generateMonthlyPlan(
   year: number,
   postsPerMonth: number = 20
 ): Promise<MonthlyPlan> {
+  // Check if brand has uploaded documents for RAG
+  const hasDocuments = await checkBrandHasDocuments(brandProfile.id);
+
+  let ragContext = "";
+  if (hasDocuments) {
+    // Retrieve actual brand performance data focused on content insights
+    const [performance, content, audience] = await Promise.all([
+      searchPerformanceData(brandProfile.id),
+      searchContentInsights(brandProfile.id),
+      searchAudienceInsights(brandProfile.id),
+    ]);
+
+    // Build formatted context for AI
+    ragContext =
+      buildPerformanceContext(performance) +
+      buildContentContext(content) +
+      buildAudienceContext(audience);
+  }
+
   const prompt = buildMonthlyPlanPrompt(
     brandProfile,
     annualStrategy,
     month,
     year,
-    postsPerMonth
+    postsPerMonth,
+    ragContext,
+    hasDocuments
   );
 
-  const plan = await runStructuredPrompt<MonthlyPlan>(
-    prompt,
-    monthlyPlanSchema,
-    {
-      reasoningEffort: "high",
-      enableWebSearch: true,
-      verbosity: "high",
-    }
-  );
+  const plan = await runStructuredPrompt<MonthlyPlan>(prompt, {
+    model: "gpt-5-nano",
+    reasoningEffort: "high",
+    verbosity: "high",
+  });
 
   return plan;
 }
@@ -60,7 +108,9 @@ function buildMonthlyPlanPrompt(
   strategy: AnnualStrategy,
   month: string,
   year: number,
-  postsPerMonth: number
+  postsPerMonth: number,
+  ragContext: string,
+  hasDocuments: boolean
 ): string {
   const contentPillarsText = strategy.contentPillars
     .map((p) => `- ${p.name}: ${p.description} (${p.frequency})`)
@@ -72,6 +122,18 @@ function buildMonthlyPlanPrompt(
 
   return `
 You are a social media content strategist creating a detailed monthly content plan for ${month} ${year}.
+
+${ragContext}
+
+${
+  hasDocuments
+    ? `
+⚠️ CRITICAL INSTRUCTION: Use the ACTUAL performance data above to inform content recommendations. Prioritize content types, topics, and posting patterns that have proven successful based on the real metrics provided.
+`
+    : `
+ℹ️ NOTE: No performance data available. Base recommendations on the annual strategy and industry best practices.
+`
+}
 
 # Brand Information
 - **Brand Name**: ${brand.brandName}

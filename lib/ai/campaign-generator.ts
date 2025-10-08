@@ -1,8 +1,17 @@
-import { runStructuredPrompt } from "@/lib/replicate";
+import { runStructuredPrompt } from "./openai-client";
 import { tacticalCampaignSchema } from "./schemas";
 import { BrandProfile } from "@/lib/db/schema";
 import { AnnualStrategy } from "./strategy-generator";
 import { analyzeCompetitorContent } from "@/lib/rivaliq";
+import {
+  searchContentInsights,
+  searchCompetitiveInsights,
+  searchTrendingTopics,
+} from "./vector-search";
+import { buildRAGContext } from "./context-builder";
+import { db } from "@/lib/db/supabase";
+import { brandDocuments } from "@/lib/db/drizzle-schema";
+import { eq, and } from "drizzle-orm";
 
 export interface TacticalCampaign {
   opportunity: {
@@ -35,6 +44,24 @@ export interface TacticalCampaign {
 }
 
 /**
+ * Check if brand has processed documents
+ */
+async function checkBrandHasDocuments(brandId: string): Promise<boolean> {
+  const docs = await db
+    .select()
+    .from(brandDocuments)
+    .where(
+      and(
+        eq(brandDocuments.brandId, brandId),
+        eq(brandDocuments.processingStatus, "completed")
+      )
+    )
+    .limit(1);
+
+  return docs.length > 0;
+}
+
+/**
  * Detect market opportunities and generate tactical campaign
  */
 export async function generateTacticalCampaign(
@@ -46,21 +73,36 @@ export async function generateTacticalCampaign(
     insights?: any;
   }
 ): Promise<TacticalCampaign> {
+  // Check if brand has uploaded documents for RAG
+  const hasDocuments = await checkBrandHasDocuments(brandProfile.id);
+
+  let ragContext = "";
+  if (hasDocuments) {
+    // Retrieve campaign-relevant data
+    const [content, competitive, trending] = await Promise.all([
+      searchContentInsights(brandProfile.id),
+      searchCompetitiveInsights(brandProfile.id),
+      searchTrendingTopics(brandProfile.id),
+    ]);
+
+    // Build formatted context
+    const allResults = [...content, ...competitive, ...trending];
+    ragContext = buildRAGContext(allResults);
+  }
+
   const prompt = buildCampaignPrompt(
     brandProfile,
     annualStrategy,
-    competitorData
+    competitorData,
+    ragContext,
+    hasDocuments
   );
 
-  const campaign = await runStructuredPrompt<TacticalCampaign>(
-    prompt,
-    tacticalCampaignSchema,
-    {
-      reasoningEffort: "high",
-      enableWebSearch: true,
-      verbosity: "high",
-    }
-  );
+  const campaign = await runStructuredPrompt<TacticalCampaign>(prompt, {
+    model: "gpt-5-nano",
+    reasoningEffort: "high",
+    verbosity: "high",
+  });
 
   return campaign;
 }
@@ -72,7 +114,9 @@ function buildCampaignPrompt(
     companyIds: string[];
     topPosts?: any[];
     insights?: any;
-  }
+  },
+  ragContext?: string,
+  hasDocuments?: boolean
 ): string {
   const contentPillarsText = strategy.contentPillars
     .map((p) => `- ${p.name}: ${p.description}`)
@@ -90,6 +134,18 @@ function buildCampaignPrompt(
 
   return `
 You are a tactical campaign strategist identifying market opportunities and creating rapid-response campaigns.
+
+${ragContext || ""}
+
+${
+  hasDocuments
+    ? `
+⚠️ CRITICAL INSTRUCTION: Use the ACTUAL brand performance data above to identify proven content approaches and gaps. Base campaign recommendations on real performance insights and competitive intelligence from uploaded reports.
+`
+    : `
+ℹ️ NOTE: No performance data available. Base campaign on strategy framework and market research.
+`
+}
 
 # Brand Information
 - **Brand Name**: ${brand.brandName}

@@ -1,6 +1,6 @@
-import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
-import { supabase } from "@/lib/db/supabase";
-import { Document as LangchainDocument } from "langchain/document";
+import { db } from "@/lib/db/supabase";
+import { documentChunks } from "@/lib/db/drizzle-schema";
+import { eq, sql } from "drizzle-orm";
 import { getEmbeddingModelWithFallback } from "@/lib/ai/embeddings";
 
 export interface SearchFilters {
@@ -25,21 +25,7 @@ export interface SearchResult {
 }
 
 /**
- * Initialize vector store for searching
- * Uses EmbeddingGemma (768-dim) with fallback to OpenAI (1536-dim)
- */
-function getVectorStore() {
-  const embeddings = getEmbeddingModelWithFallback();
-
-  return new SupabaseVectorStore(embeddings, {
-    client: supabase,
-    tableName: "document_chunks",
-    queryName: "match_documents",
-  });
-}
-
-/**
- * Search brand documents using vector similarity
+ * Search brand documents using direct SQL vector similarity
  */
 export async function searchBrandDocuments(
   brandId: string,
@@ -52,45 +38,62 @@ export async function searchBrandDocuments(
   const { limit = 5, filters = {} } = options;
 
   try {
-    const vectorStore = getVectorStore();
+    // Generate embedding for the query
+    const embeddingModel = getEmbeddingModelWithFallback();
+    const queryEmbedding = await embeddingModel.embedQuery(query);
 
-    // Build filter object for Supabase
-    const filter: Record<string, any> = {
-      brandId,
-    };
+    // Build WHERE conditions
+    const conditions = [eq(documentChunks.brandId, brandId)];
 
+    // Add metadata filters if provided
+    const metadataConditions: string[] = [];
     if (filters.platform) {
-      filter.platform = filters.platform;
+      metadataConditions.push(`metadata->>'platform' = '${filters.platform}'`);
     }
     if (filters.category) {
-      filter.category = filters.category;
+      metadataConditions.push(`metadata->>'category' = '${filters.category}'`);
     }
     if (filters.period) {
-      filter.period = filters.period;
+      metadataConditions.push(`metadata->>'period' = '${filters.period}'`);
     }
     if (filters.fileName) {
-      filter.fileName = filters.fileName;
+      metadataConditions.push(`metadata->>'fileName' = '${filters.fileName}'`);
     }
 
-    // Perform similarity search
-    const results = await vectorStore.similaritySearchWithScore(
-      query,
-      limit,
-      filter
-    );
+    // Perform similarity search using raw SQL
+    const results = await db
+      .select({
+        id: documentChunks.id,
+        documentId: documentChunks.documentId,
+        brandId: documentChunks.brandId,
+        chunkText: documentChunks.chunkText,
+        chunkIndex: documentChunks.chunkIndex,
+        metadata: documentChunks.metadata,
+        similarity: sql<number>`1 - (${documentChunks.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector)`,
+      })
+      .from(documentChunks)
+      .where(
+        sql`${documentChunks.brandId} = ${brandId}${
+          metadataConditions.length > 0
+            ? sql` AND ${sql.raw(metadataConditions.join(" AND "))}`
+            : sql``
+        }`
+      )
+      .orderBy(sql`${documentChunks.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector`)
+      .limit(limit);
 
-    return results.map(([doc, score]) => ({
-      content: doc.pageContent,
+    return results.map((row) => ({
+      content: row.chunkText,
       metadata: {
-        documentId: doc.metadata.documentId,
-        brandId: doc.metadata.brandId,
-        fileName: doc.metadata.fileName,
-        category: doc.metadata.category,
-        platform: doc.metadata.platform,
-        period: doc.metadata.period,
-        chunkIndex: doc.metadata.chunkIndex,
+        documentId: row.documentId,
+        brandId: row.brandId,
+        fileName: (row.metadata as any)?.fileName || "",
+        category: (row.metadata as any)?.category || "",
+        platform: (row.metadata as any)?.platform,
+        period: (row.metadata as any)?.period,
+        chunkIndex: row.chunkIndex,
       },
-      score,
+      score: row.similarity,
     }));
   } catch (error) {
     console.error("Vector search error:", error);

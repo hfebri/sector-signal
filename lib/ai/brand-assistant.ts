@@ -1,8 +1,4 @@
-import Replicate from "replicate";
-
-const replicate = new Replicate({
-  auth: process.env.NEXT_REPLICATE_API_TOKEN!,
-});
+import { runStructuredPrompt } from "./openai-client";
 
 export interface BrandSuggestions {
   competitors: string[];
@@ -41,7 +37,7 @@ Provide comprehensive suggestions for:
    - Market opportunities (3-5 opportunities)
    - Key challenges (3-5 challenges)
 
-Be specific, actionable, and based on real market knowledge. Format as JSON with this structure:
+Be specific, actionable, and based on real market knowledge. Return your response as a JSON object with this exact structure:
 {
   "competitors": ["competitor1", "competitor2", ...],
   "targetAudience": "detailed description",
@@ -57,35 +53,16 @@ Be specific, actionable, and based on real market knowledge. Format as JSON with
   }
 }`;
 
-  const input = {
-    prompt,
-    messages: [],
-    verbosity: "medium" as const,
-    image_input: [],
-    reasoning_effort: "medium" as const,
-  };
-
-  let fullResponse = "";
-
-  for await (const event of replicate.stream("openai/gpt-5", { input })) {
-    fullResponse += event.toString();
-  }
-
-  // Parse JSON from response
   try {
-    // Extract JSON from markdown code blocks if present
-    const jsonMatch = fullResponse.match(/```json\n([\s\S]*?)\n```/) ||
-                      fullResponse.match(/\{[\s\S]*\}/);
+    const suggestions = await runStructuredPrompt<BrandSuggestions>(prompt, {
+      model: "gpt-5-nano",
+      reasoningEffort: "medium",
+      verbosity: "medium",
+    });
 
-    if (jsonMatch) {
-      const jsonStr = jsonMatch[1] || jsonMatch[0];
-      return JSON.parse(jsonStr);
-    }
-
-    // Try parsing the whole response as JSON
-    return JSON.parse(fullResponse);
+    return suggestions;
   } catch (error) {
-    console.error("Failed to parse AI response:", error);
+    console.error("Failed to generate brand suggestions:", error);
     throw new Error("Failed to generate brand suggestions");
   }
 }

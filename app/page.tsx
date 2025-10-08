@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useBrand } from "@/lib/brand-context";
@@ -12,8 +12,33 @@ export default function Dashboard() {
   const { currentBrand, isLoading } = useBrand();
   const router = useRouter();
   const [refreshDocuments, setRefreshDocuments] = useState(0);
+  const [hasStrategy, setHasStrategy] = useState(false);
+  const [checkingStrategy, setCheckingStrategy] = useState(true);
 
-  if (isLoading) {
+  const checkForStrategy = useCallback(async () => {
+    if (!currentBrand) {
+      setCheckingStrategy(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/strategy/latest?brandId=${currentBrand.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        setHasStrategy(!!data.strategy);
+      }
+    } catch (error) {
+      console.error("Failed to check for strategy:", error);
+    } finally {
+      setCheckingStrategy(false);
+    }
+  }, [currentBrand]);
+
+  useEffect(() => {
+    checkForStrategy();
+  }, [checkForStrategy]);
+
+  if (isLoading || checkingStrategy) {
     return <DashboardSkeleton />;
   }
 
@@ -90,13 +115,17 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-sm font-medium dark:bg-slate-800">
-                2
+              <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium ${
+                hasStrategy
+                  ? 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100'
+                  : 'bg-slate-100 dark:bg-slate-800'
+              }`}>
+                {hasStrategy ? '✓' : '2'}
               </div>
               <span>Generate your annual social media strategy</span>
             </div>
             <Button variant="outline" size="sm" onClick={() => router.push('/strategy')}>
-              Create Strategy
+              {hasStrategy ? 'View Strategy' : 'Create Strategy'}
             </Button>
           </div>
           <div className="flex items-center justify-between">

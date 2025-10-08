@@ -556,3 +556,476 @@ The foundation is solid and ready for rapid feature development! 🎉
 - Professional, clean brand management interface
 
 **Status**: Clean brand interface complete! RivalIQ integration completely hidden from users! ✨
+
+---
+
+## 🧠 RAG System Implementation Plan
+
+### 📋 Overview
+Implement Retrieval Augmented Generation (RAG) to provide AI with actual brand performance data instead of generic recommendations. This allows the system to generate strategies based on real metrics from uploaded documents.
+
+### ✅ Phase 1: Foundation Setup (COMPLETED)
+
+#### 1.1 Database Schema ✅
+- [x] Created `brands` table with brand profile data
+- [x] Created `brand_documents` table for file metadata tracking
+- [x] Created `document_chunks` table with vector embeddings
+- [x] Configured pgvector extension for 1536-dimensional OpenAI embeddings
+- [x] Set up foreign key relationships with cascade delete
+
+**Files:**
+- `lib/db/drizzle-schema.ts` - Complete schema with vector support
+- `drizzle/0000_yummy_doctor_spectrum.sql` - Initial migration
+- `drizzle/0001_flawless_tyrannus.sql` - Vector dimension update (768→1536)
+
+#### 1.2 Dependencies Installation ✅
+- [x] Installed `@langchain/openai` for OpenAI embeddings
+- [x] Installed `@langchain/community` for Supabase vector store
+- [x] Installed `langchain` for document processing
+- [x] Installed file parsers: `pdf-parse`, `xlsx`, `mammoth`
+- [x] Installed `openai` SDK
+
+**Package.json additions:**
+```json
+{
+  "@langchain/community": "^0.3.57",
+  "@langchain/openai": "^0.6.14",
+  "langchain": "^0.3.35",
+  "openai": "^6.1.0",
+  "xlsx": "^0.18.5"
+}
+```
+
+#### 1.3 Embedding Configuration ✅
+- [x] Configured OpenAI `text-embedding-3-small` (1536 dimensions)
+- [x] Tested embedding generation successfully (~1.5s, $0.00002 per 1K tokens)
+- [x] Updated vector dimensions in database schema to 1536
+- [x] Verified `OPENAI_API_KEY` is configured in `.env.local`
+
+**Files:**
+- `lib/ai/embeddings.ts` - Embedding model configuration
+
+#### 1.4 Supabase Setup ✅
+- [x] Enabled pgvector extension in Supabase dashboard
+- [x] Generated migration SQL for vector tables
+- [x] Created vector index configuration script
+
+**Manual Setup Required:**
+- Run `update-vector-dimension.sql` in Supabase SQL Editor to create tables with vector index
+
+---
+
+### 🚀 Phase 2: Document Processing Pipeline (NEXT)
+
+#### 2.1 Document Upload System
+- [ ] Create file upload UI component
+  - File dropzone with drag & drop support
+  - File type validation (PDF, CSV, XLSX, DOCX, TXT)
+  - File size limits (max 10MB per file)
+  - Multiple file upload support
+  - Upload progress indicators
+
+- [ ] Create Supabase Storage bucket
+  - Bucket name: `brand-documents`
+  - Configure access policies (brand-specific)
+  - Set up file path structure: `{brandId}/{category}/{filename}`
+
+- [ ] Build upload API endpoint
+  - Route: `POST /api/documents/upload`
+  - Accept files via multipart/form-data
+  - Upload to Supabase Storage
+  - Create metadata record in `brand_documents` table
+  - Return upload status and document ID
+
+**Files to Create:**
+- `app/api/documents/upload/route.ts`
+- `components/documents/DocumentUpload.tsx`
+- `components/documents/FileDropzone.tsx`
+
+**Implementation Steps:**
+1. Create Supabase Storage bucket via dashboard
+2. Build FileDropzone component with react-dropzone
+3. Create upload API route with Supabase storage integration
+4. Add file validation and error handling
+5. Create metadata record in database with `pending` status
+
+---
+
+#### 2.2 Document Processing Engine ✅ (Already Built!)
+**Status:** Document processor already implemented in `lib/ai/document-processor.ts`
+
+**Features:**
+- ✅ Multi-format support (PDF, CSV, XLSX, DOCX, TXT)
+- ✅ RecursiveCharacterTextSplitter (1000 tokens, 200 overlap)
+- ✅ OpenAI embedding generation
+- ✅ Supabase vector storage
+- ✅ Processing status tracking
+- ✅ Batch processing support
+
+**Functions Available:**
+- `processDocument(documentId)` - Process single document
+- `processBatchDocuments(documentIds)` - Process multiple documents
+- `processAllBrandDocuments(brandId)` - Process all pending docs for a brand
+
+---
+
+#### 2.3 Processing API Endpoint
+- [ ] Create document processing trigger endpoint
+  - Route: `POST /api/documents/process`
+  - Input: `{ documentId: string }` or `{ brandId: string }` for batch
+  - Trigger document processor
+  - Return processing status
+
+- [ ] Create processing status endpoint
+  - Route: `GET /api/documents/status/:documentId`
+  - Return current processing status and chunk count
+
+**Files to Create:**
+- `app/api/documents/process/route.ts`
+- `app/api/documents/status/[documentId]/route.ts`
+
+**Implementation Steps:**
+1. Create POST endpoint that calls `processDocument()`
+2. Add background job support (optional: use worker threads)
+3. Create status endpoint for real-time progress
+4. Add error handling and retry logic
+
+---
+
+#### 2.4 Document Management UI
+- [ ] Create documents list page
+  - Route: `/app/documents/page.tsx`
+  - Display all documents for current brand
+  - Show processing status (pending/processing/completed/failed)
+  - File metadata (name, type, size, upload date)
+  - Chunk count for processed documents
+  - Delete functionality
+
+- [ ] Add document management to dashboard
+  - Quick view of document count
+  - Processing status summary
+  - Link to full documents page
+
+**Files to Create:**
+- `app/documents/page.tsx`
+- `components/documents/DocumentList.tsx`
+- `components/documents/DocumentStatusBadge.tsx`
+- `components/documents/DocumentActions.tsx`
+
+**UI Features:**
+- Table view with sortable columns
+- Status badges with color coding
+- Process/reprocess buttons
+- Delete confirmation dialogs
+- Upload new document button
+
+---
+
+### 🔍 Phase 3: Vector Search Integration
+
+#### 3.1 Search Infrastructure ✅ (Already Built!)
+**Status:** Vector search already implemented in `lib/ai/vector-search.ts`
+
+**Features:**
+- ✅ Semantic similarity search
+- ✅ Metadata filtering (platform, category, period)
+- ✅ Pre-built search functions:
+  - `searchBrandDocuments()` - Generic search with filters
+  - `searchPerformanceData()` - Find performance metrics
+  - `searchContentInsights()` - Best performing content
+  - `searchAudienceInsights()` - Demographics and behavior
+  - `searchTrendingTopics()` - Trends and opportunities
+  - `searchCompetitiveInsights()` - Competitor analysis
+  - `getBrandContext()` - Comprehensive context builder
+
+---
+
+#### 3.2 Context Builder ✅ (Already Built!)
+**Status:** Context formatting already implemented in `lib/ai/context-builder.ts`
+
+**Features:**
+- ✅ Format search results for AI prompts
+- ✅ Group by platform/category
+- ✅ Extract key metrics automatically
+- ✅ Build specialized contexts:
+  - `buildRAGContext()` - General formatted context
+  - `buildPerformanceContext()` - Performance metrics
+  - `buildContentContext()` - Content insights
+  - `buildAudienceContext()` - Audience data
+  - `buildStrategyContext()` - Comprehensive strategy context
+- ✅ Token limit handling with truncation
+
+---
+
+#### 3.3 Search API Endpoints
+- [ ] Create search endpoint for debugging
+  - Route: `POST /api/documents/search`
+  - Input: `{ brandId, query, filters?, limit? }`
+  - Return search results with scores
+  - Useful for testing and debugging RAG
+
+**Files to Create:**
+- `app/api/documents/search/route.ts`
+
+---
+
+### 🎯 Phase 4: RAG Integration into AI Generators
+
+#### 4.1 Strategy Generator with RAG
+- [ ] Update `lib/ai/strategy-generator.ts`
+  - Add document check before generation
+  - Retrieve brand performance data via `getBrandContext()`
+  - Inject context into strategy prompt
+  - Update prompt to emphasize using actual data
+  - Add fallback message if no documents uploaded
+
+**Implementation:**
+```typescript
+// Before generating strategy
+const hasDocuments = await checkBrandHasDocuments(brandId);
+
+let ragContext = "";
+if (hasDocuments) {
+  const [performance, content, audience] = await Promise.all([
+    searchPerformanceData(brandId),
+    searchContentInsights(brandId),
+    searchAudienceInsights(brandId),
+  ]);
+
+  ragContext = buildStrategyContext({ performance, content, audience });
+}
+
+const prompt = `Generate annual strategy for ${brand.name}.
+
+${ragContext}
+
+${ragContext ?
+  "IMPORTANT: Base your strategy on the ACTUAL BRAND DATA above, not generic assumptions." :
+  "Note: No performance data uploaded yet. Base strategy on brand profile and industry best practices."
+}
+
+Brand Profile:
+- Industry: ${brand.industry}
+- Target Audience: ${brand.targetAudience}
+...`;
+```
+
+**Files to Update:**
+- `lib/ai/strategy-generator.ts`
+- `app/api/strategy/generate/route.ts`
+
+---
+
+#### 4.2 Monthly Planner with RAG
+- [ ] Update `lib/ai/monthly-planner.ts`
+  - Retrieve top performing content types via `searchContentInsights()`
+  - Get audience engagement patterns
+  - Use actual posting schedules from historical data
+  - Recommend content types based on past performance
+
+**Context to Add:**
+- Best performing content types per platform
+- Optimal posting times from historical data
+- Top engaging topics from past months
+- Content formats with highest ROI
+
+**Files to Update:**
+- `lib/ai/monthly-planner.ts`
+- `app/api/monthly-plan/generate/route.ts`
+
+---
+
+#### 4.3 Campaign Generator with RAG
+- [ ] Update `lib/ai/campaign-generator.ts`
+  - Search for successful past campaigns
+  - Analyze competitor performance via RivalIQ + uploaded reports
+  - Identify content gaps vs. competitors
+  - Recommend campaigns based on proven tactics
+
+**Context to Add:**
+- Successful campaign patterns from history
+- Competitor campaign analysis
+- Content performance by campaign type
+- ROI data from past tactical campaigns
+
+**Files to Update:**
+- `lib/ai/campaign-generator.ts`
+- `app/api/campaigns/generate/route.ts`
+
+---
+
+### 📊 Phase 5: UI/UX Enhancements
+
+#### 5.1 Document Upload Flow
+- [ ] Add "Upload Documents" section to dashboard
+  - Prominent CTA if no documents uploaded
+  - Show document count and processing status
+  - Quick upload button
+
+- [ ] Create onboarding tooltip system
+  - Guide users to upload documents after brand selection
+  - Explain RAG benefits (data-driven vs. generic)
+  - Show before/after examples
+
+**Files to Create:**
+- `components/onboarding/RAGTooltip.tsx`
+- `components/dashboard/DocumentsQuickView.tsx`
+
+---
+
+#### 5.2 Data-Driven Indicators
+- [ ] Add badges to show when strategies use actual data
+  - "✓ Based on your data" badge
+  - "ⓘ Generic recommendation (upload data for personalized insights)" badge
+
+- [ ] Create data quality indicators
+  - Show which AI features have data backing
+  - Indicate coverage (e.g., "Instagram: 3 months, Facebook: 1 month")
+
+**Files to Create:**
+- `components/ui/DataBadge.tsx`
+- `components/ui/DataCoverageIndicator.tsx`
+
+---
+
+#### 5.3 Sample Data Helper
+- [ ] Create sample BMW document upload helper
+  - Pre-load 90+ BMW sample files
+  - One-click import for demo purposes
+  - Show example of fully RAG-powered insights
+
+**Files to Create:**
+- `app/api/documents/import-sample/route.ts`
+- `lib/sample-data/bmw-importer.ts`
+
+---
+
+### 🧪 Phase 6: Testing & Validation
+
+#### 6.1 RAG Quality Testing
+- [ ] Create test suite for document processing
+  - Test each file format (PDF, CSV, XLSX, etc.)
+  - Verify chunking quality
+  - Check embedding generation
+  - Validate vector storage
+
+- [ ] Create test suite for search quality
+  - Test semantic search accuracy
+  - Verify filtering works correctly
+  - Check relevance scores
+  - Test edge cases (no results, partial matches)
+
+**Files to Create:**
+- `__tests__/rag/document-processor.test.ts`
+- `__tests__/rag/vector-search.test.ts`
+
+---
+
+#### 6.2 End-to-End RAG Flow Test
+- [ ] Test complete RAG pipeline
+  1. Upload document → Verify storage
+  2. Process document → Check chunking
+  3. Generate embeddings → Verify vector storage
+  4. Search documents → Validate results
+  5. Generate strategy → Confirm RAG context injection
+  6. Verify output quality with actual data
+
+**Test Scenarios:**
+- Brand with no documents (generic mode)
+- Brand with 1 document (limited data mode)
+- Brand with 10+ documents (full RAG mode)
+- Multi-platform data (Instagram + Facebook + Twitter)
+
+---
+
+### 📚 Phase 7: Documentation
+
+#### 7.1 Update User Documentation
+- [ ] Create RAG user guide
+  - What is RAG and why it matters
+  - How to upload documents
+  - Best practices for document organization
+  - File format requirements
+  - Interpreting data-driven vs. generic recommendations
+
+**Files to Create:**
+- `docs/user-guide/rag-system.md`
+- `docs/user-guide/uploading-documents.md`
+
+---
+
+#### 7.2 Update Developer Documentation
+- [ ] Document RAG architecture
+  - System design overview
+  - Data flow diagrams
+  - API documentation
+  - Vector search best practices
+  - Extending RAG functionality
+
+**Files to Create:**
+- `docs/architecture/rag-system.md`
+- `docs/api/documents-api.md`
+
+---
+
+### 🎯 Success Metrics
+
+- [ ] **Document Processing**: Successfully process 90+ BMW files in < 5 minutes
+- [ ] **Search Quality**: Relevant results with >0.7 similarity score
+- [ ] **Strategy Quality**: Strategies include specific metrics from uploaded data
+- [ ] **User Adoption**: 80% of brands have at least 1 document uploaded
+- [ ] **Performance**: Vector search completes in < 500ms
+
+---
+
+### 🔧 Technical Considerations
+
+#### Database
+- **pgvector Index**: IVFFlat index for fast similarity search (created in migration)
+- **Chunk Size**: 1000 tokens with 200 overlap (optimal for semantic search)
+- **Vector Dimensions**: 1536 (OpenAI text-embedding-3-small)
+
+#### Performance
+- **Batch Processing**: Process multiple documents in parallel
+- **Caching**: Cache frequently searched contexts (Redis future enhancement)
+- **Rate Limiting**: Respect OpenAI API rate limits (3000 RPM)
+
+#### Security
+- **Storage Access**: Brand-scoped file access in Supabase Storage
+- **Document Privacy**: Documents only searchable within their brand
+- **API Keys**: Secure storage of OpenAI and Supabase credentials
+
+#### Cost Management
+- **Embedding Cost**: ~$0.00002 per 1K tokens (very affordable)
+- **Estimate**: 90 files × 10 chunks × 200 tokens = ~$0.036 total
+- **Storage**: Supabase free tier covers up to 1GB
+
+---
+
+### 📝 Implementation Checklist
+
+**Current Status: Phase 1 Complete ✅**
+
+**Next Steps (Phase 2):**
+1. [ ] Run `update-vector-dimension.sql` in Supabase SQL Editor
+2. [ ] Create Supabase Storage bucket `brand-documents`
+3. [ ] Build FileDropzone component
+4. [ ] Create upload API endpoint
+5. [ ] Build DocumentUpload UI component
+6. [ ] Create processing API endpoint
+7. [ ] Build DocumentList page
+8. [ ] Test upload → process → search flow
+
+**Estimated Time:**
+- Phase 2 (Document Upload): 2-3 days
+- Phase 3 (Search API): 1 day (mostly done!)
+- Phase 4 (AI Integration): 2-3 days
+- Phase 5 (UI/UX): 2 days
+- Phase 6 (Testing): 1-2 days
+- Phase 7 (Documentation): 1 day
+
+**Total: ~10-12 days for complete RAG system**
+
+---
+
+**Status**: RAG Phase 1 Complete! Database schema ready, embeddings configured, processing engine built. Ready to implement document upload UI! 🧠✨

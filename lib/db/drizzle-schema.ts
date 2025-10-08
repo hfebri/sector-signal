@@ -2,10 +2,10 @@ import { pgTable, text, timestamp, uuid, jsonb, integer, customType } from "driz
 import { sql } from "drizzle-orm";
 
 // Define pgvector type for embeddings
-// Default: 768 dimensions for EmbeddingGemma (was 1536 for OpenAI)
+// Default: 1536 dimensions for OpenAI text-embedding-3-small
 const vector = customType<{ data: number[]; config: { dimensions: number } }>({
   dataType(config) {
-    return `vector(${config?.dimensions ?? 768})`;
+    return `vector(${config?.dimensions ?? 1536})`;
   },
   toDriver(value: number[]) {
     return sql`${JSON.stringify(value)}::vector`;
@@ -52,7 +52,7 @@ export const documentChunks = pgTable("document_chunks", {
   brandId: uuid("brand_id").notNull().references(() => brands.id, { onDelete: "cascade" }),
   chunkText: text("chunk_text").notNull(),
   chunkIndex: integer("chunk_index").notNull(),
-  embedding: vector({ dimensions: 768 }).notNull(), // EmbeddingGemma dimension (was 1536 for OpenAI)
+  embedding: vector({ dimensions: 1536 }).notNull(), // OpenAI text-embedding-3-small dimension
   metadata: jsonb("metadata").$type<{
     platform?: string;
     period?: string;
@@ -63,9 +63,23 @@ export const documentChunks = pgTable("document_chunks", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const annualStrategies = pgTable("annual_strategies", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  brandId: uuid("brand_id").notNull().references(() => brands.id, { onDelete: "cascade" }),
+  strategyData: jsonb("strategy_data").notNull(), // Full strategy JSON
+  startDate: timestamp("start_date").notNull(), // Start of strategy period (current year)
+  endDate: timestamp("end_date").notNull(), // End of strategy period (next year)
+  generatedWithRag: integer("generated_with_rag").notNull().default(0), // Boolean: 0 = no RAG, 1 = with RAG
+  documentCount: integer("document_count").default(0), // Number of documents used
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export type Brand = typeof brands.$inferSelect;
 export type NewBrand = typeof brands.$inferInsert;
 export type BrandDocument = typeof brandDocuments.$inferSelect;
 export type NewBrandDocument = typeof brandDocuments.$inferInsert;
 export type DocumentChunk = typeof documentChunks.$inferSelect;
 export type NewDocumentChunk = typeof documentChunks.$inferInsert;
+export type AnnualStrategy = typeof annualStrategies.$inferSelect;
+export type NewAnnualStrategy = typeof annualStrategies.$inferInsert;

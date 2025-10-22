@@ -1,6 +1,14 @@
 import { SearchResult } from "./vector-search";
 
 /**
+ * Context with citation mapping for inline citations
+ */
+export interface ContextWithCitations {
+  context: string;
+  citationMap: Map<number, SearchResult>;
+}
+
+/**
  * Format retrieved chunks into readable context for AI prompts
  */
 export function buildRAGContext(searchResults: SearchResult[]): string {
@@ -150,35 +158,93 @@ export function extractKeyMetrics(searchResults: SearchResult[]): {
 }
 
 /**
- * Build a comprehensive context for strategy generation
+ * Build a comprehensive context for strategy generation with citation tracking
  */
 export function buildStrategyContext(params: {
   performance?: SearchResult[];
   content?: SearchResult[];
   audience?: SearchResult[];
   competitive?: SearchResult[];
-}): string {
+}): ContextWithCitations {
   const { performance = [], content = [], audience = [], competitive = [] } = params;
 
   let context = "\n\n# BRAND DATA ANALYSIS\n";
   context += "*(Based on actual uploaded analytics and reports)*\n\n";
 
+  // Create citation mapping
+  const citationMap = new Map<number, SearchResult>();
+  let citationNumber = 1;
+
+  // Add data usage instructions with INLINE CITATIONS
+  context += "## IMPORTANT: CITATION INSTRUCTIONS\n";
+  context += "When using data from the sources below, you MUST cite them using inline citation numbers:\n";
+  context += "- Each data source below is marked with [1], [2], [3], etc.\n";
+  context += "- When you use information from a source, add the citation number at the END of the sentence or claim\n";
+  context += "- Example: 'Instagram engagement increased by 45% in Q1 [1]'\n";
+  context += "- Example: 'Video content performs best with 28,871 views average [2]'\n";
+  context += "- Use specific metrics and numbers from the data provided\n";
+  context += "- If no specific data exists for a recommendation, do NOT add a citation number\n\n";
+  context += "---\n\n";
+
+  // Add performance data with citation numbers
   if (performance.length > 0) {
-    context += buildPerformanceContext(performance);
+    context += "\n\n## KEY PERFORMANCE METRICS\n";
+    performance.forEach((result) => {
+      const platform = result.metadata.platform || result.metadata.category;
+      const period = result.metadata.period || "Recent";
+      const fileName = result.metadata.fileName || "Unknown Source";
+
+      context += `\n**[${citationNumber}] ${platform?.toUpperCase()} - ${period}**\n`;
+      context += `Source: ${fileName}\n`;
+      context += `${result.content.trim()}\n`;
+
+      citationMap.set(citationNumber, result);
+      citationNumber++;
+    });
+    context += "\n";
   }
 
+  // Add content insights with citation numbers
   if (content.length > 0) {
-    context += buildContentContext(content);
+    context += "\n\n## TOP PERFORMING CONTENT INSIGHTS\n";
+    content.forEach((result) => {
+      const fileName = result.metadata.fileName || "Content Insight";
+
+      context += `\n**[${citationNumber}] ${fileName}**\n`;
+      context += `${result.content.trim()}\n`;
+
+      citationMap.set(citationNumber, result);
+      citationNumber++;
+    });
+    context += "\n";
   }
 
+  // Add audience insights with citation numbers
   if (audience.length > 0) {
-    context += buildAudienceContext(audience);
+    context += "\n\n## AUDIENCE INSIGHTS & DEMOGRAPHICS\n";
+    audience.forEach((result) => {
+      const fileName = result.metadata.fileName || "Audience Data";
+
+      context += `\n**[${citationNumber}] ${fileName}**\n`;
+      context += `${result.content.trim()}\n`;
+
+      citationMap.set(citationNumber, result);
+      citationNumber++;
+    });
+    context += "\n";
   }
 
+  // Add competitive intelligence with citation numbers
   if (competitive.length > 0) {
     context += "\n\n## COMPETITIVE INTELLIGENCE\n";
     competitive.forEach((result) => {
-      context += `\n${result.content.trim()}\n`;
+      const fileName = result.metadata.fileName || "Competitive Analysis";
+
+      context += `\n**[${citationNumber}] ${fileName}**\n`;
+      context += `${result.content.trim()}\n`;
+
+      citationMap.set(citationNumber, result);
+      citationNumber++;
     });
     context += "\n";
   }
@@ -190,9 +256,10 @@ export function buildStrategyContext(params: {
   context += `- **Platforms Analyzed**: ${platforms.join(", ") || "N/A"}\n`;
   context += `- **Time Periods**: ${periods.join(", ") || "N/A"}\n`;
   context += `- **Key Metrics Found**: ${metrics.slice(0, 5).join(", ") || "N/A"}\n`;
+  context += `- **Total Data Sources**: ${allResults.length} numbered citations available\n`;
   context += "\n---\n\n";
 
-  return context;
+  return { context, citationMap };
 }
 
 /**

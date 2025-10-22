@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateAnnualStrategy } from "@/lib/ai/strategy-generator";
+import { generateAnnualStrategyWithCitations } from "@/lib/ai/strategy-generator";
 import { db } from "@/lib/db/supabase";
 import { brands, annualStrategies, brandDocuments } from "@/lib/db/drizzle-schema";
 import { eq, and } from "drizzle-orm";
@@ -51,10 +51,12 @@ export async function POST(request: NextRequest) {
 
     console.log(`Strategy will use ${documentCount} documents (RAG: ${generatedWithRag ? 'Yes' : 'No'})`);
 
-    // Generate strategy using AI
-    console.log("Starting AI strategy generation...");
-    const strategy = await generateAnnualStrategy(brandProfile);
+    // Generate strategy using AI with citations
+    console.log("Starting AI strategy generation with citation tracking...");
+    const result = await generateAnnualStrategyWithCitations(brandProfile);
     console.log("Strategy generated successfully");
+    console.log(`Citations tracked: ${result.citations.overall.length}`);
+    console.log(`Data quality - Confidence: ${result.dataQuality.confidenceLevel}, Coverage: ${result.dataQuality.coverageScore}%`);
 
     // Calculate time period: current year to next year
     const now = new Date();
@@ -62,12 +64,14 @@ export async function POST(request: NextRequest) {
     const startDate = new Date(currentYear, 0, 1); // January 1st of current year
     const endDate = new Date(currentYear + 1, 11, 31, 23, 59, 59); // December 31st of next year
 
-    // Save strategy to database
+    // Save strategy to database with citations and data quality
     const [savedStrategy] = await db
       .insert(annualStrategies)
       .values({
         brandId,
-        strategyData: strategy,
+        strategyData: result.strategy,
+        citations: result.citations.overall, // Save citations
+        dataQuality: result.dataQuality, // Save data quality metrics
         startDate,
         endDate,
         generatedWithRag,
@@ -80,7 +84,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      strategy,
+      strategy: result.strategy,
+      citations: result.citations,
+      dataQuality: result.dataQuality,
       strategyId: savedStrategy.id,
       period: {
         start: startDate.toISOString(),

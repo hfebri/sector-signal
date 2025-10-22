@@ -67,6 +67,8 @@ export const annualStrategies = pgTable("annual_strategies", {
   id: uuid("id").primaryKey().defaultRandom(),
   brandId: uuid("brand_id").notNull().references(() => brands.id, { onDelete: "cascade" }),
   strategyData: jsonb("strategy_data").notNull(), // Full strategy JSON
+  citations: jsonb("citations"), // Citations used to generate strategy
+  dataQuality: jsonb("data_quality"), // Data quality metrics
   startDate: timestamp("start_date").notNull(), // Start of strategy period (current year)
   endDate: timestamp("end_date").notNull(), // End of strategy period (next year)
   generatedWithRag: integer("generated_with_rag").notNull().default(0), // Boolean: 0 = no RAG, 1 = with RAG

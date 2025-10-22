@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useBrand } from "@/lib/brand-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, Sparkles, Target, TrendingUp, Users, FileText, BarChart3, Send, Database } from "lucide-react";
+import { DataQuality, Citation } from "@/lib/ai/types/citations";
+import { DataQualityBadge } from "@/components/citations/DataQualityBadge";
+import { SourcePanel } from "@/components/citations/SourcePanel";
+import { CitationText } from "@/components/citations/CitationLink";
 
 interface AnnualStrategy {
   swotAnalysis: {
@@ -57,12 +61,17 @@ export default function StrategyPage() {
     generatedWithRag?: boolean;
     documentCount?: number;
   } | null>(null);
+  const [dataQuality, setDataQuality] = useState<DataQuality | null>(null);
+  const [citations, setCitations] = useState<Citation[]>([]);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentTab, setCurrentTab] = useState("positioning");
   const [followUpPrompt, setFollowUpPrompt] = useState("");
   const [isModifying, setIsModifying] = useState(false);
+  const [highlightedCitation, setHighlightedCitation] = useState<number | undefined>(undefined);
+  const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
 
   // Load existing strategy on mount
   useEffect(() => {
@@ -86,6 +95,29 @@ export default function StrategyPage() {
               generatedWithRag: data.strategy.generatedWithRag === 1,
               documentCount: data.strategy.documentCount,
             });
+
+            // Load citations and data quality if the strategy was generated with RAG
+            if (data.strategy.generatedWithRag === 1) {
+              try {
+                const citationsResponse = await fetch(`/api/strategy/citations?brandId=${currentBrand.id}`);
+                if (citationsResponse.ok) {
+                  const citationsData = await citationsResponse.json();
+                  if (citationsData.citations) {
+                    // Ensure all citations have citationNumber set (in case loaded from old cache)
+                    const citationsWithNumbers = citationsData.citations.map((citation: any, index: number) => ({
+                      ...citation,
+                      citationNumber: citation.citationNumber ?? index + 1,
+                    }));
+                    setCitations(citationsWithNumbers);
+                  }
+                  if (citationsData.dataQuality) {
+                    setDataQuality(citationsData.dataQuality);
+                  }
+                }
+              } catch (error) {
+                console.error("Failed to load citations:", error);
+              }
+            }
           }
         }
       } catch (error) {
@@ -124,6 +156,20 @@ export default function StrategyPage() {
         generatedWithRag: data.generatedWithRag === 1,
         documentCount: data.documentCount,
       });
+
+      // Set citations and data quality if available
+      if (data.citations) {
+        const citationsArray = data.citations.overall || [];
+        // Ensure all citations have citationNumber set
+        const citationsWithNumbers = citationsArray.map((citation: any, index: number) => ({
+          ...citation,
+          citationNumber: citation.citationNumber ?? index + 1,
+        }));
+        setCitations(citationsWithNumbers);
+      }
+      if (data.dataQuality) {
+        setDataQuality(data.dataQuality);
+      }
 
       // Save strategy to localStorage for use in monthly planning
       if (currentBrand) {
@@ -172,6 +218,41 @@ export default function StrategyPage() {
       setError(err instanceof Error ? err.message : "Modification failed");
     } finally {
       setIsModifying(false);
+    }
+  };
+
+  // Handle citation click - expand sources if needed, then scroll and highlight
+  const handleCitationClick = (citationNumber: number) => {
+    setHighlightedCitation(citationNumber);
+
+    // If sources section is not expanded, expand it first
+    if (!sourcesExpanded) {
+      setSourcesExpanded(true);
+      // Wait for expansion animation to complete before scrolling
+      setTimeout(() => {
+        scrollToCitation(citationNumber);
+      }, 300); // Give time for the panel to expand
+    } else {
+      // Already expanded, scroll immediately
+      scrollToCitation(citationNumber);
+    }
+
+    // Clear existing timeout
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
+
+    // Clear highlight after 3 seconds
+    highlightTimeoutRef.current = setTimeout(() => {
+      setHighlightedCitation(undefined);
+    }, 3000);
+  };
+
+  // Scroll to a specific citation
+  const scrollToCitation = (citationNumber: number) => {
+    const element = document.getElementById(`citation-${citationNumber}`);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   };
 
@@ -294,25 +375,37 @@ export default function StrategyPage() {
   }
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="relative p-8 space-y-6">
+      {/* Loading Overlay - Disables entire page during regeneration */}
+      {loading && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-8 max-w-md mx-4 text-center space-y-4">
+            <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
+            <div>
+              <h3 className="text-lg font-semibold">Generating Strategy</h3>
+              <p className="text-sm text-muted-foreground mt-2">
+                This may take 2-3 minutes. Please do not close this page or navigate away.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
-        <div>
+        <div className="space-y-2">
           <h1 className="text-3xl font-bold">Annual Strategy</h1>
-          <div className="flex items-center gap-3 text-muted-foreground">
-            <span>{currentBrand.brandName}</span>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-muted-foreground">{currentBrand.brandName}</span>
             {strategyMetadata?.period && (
               <>
-                <span>•</span>
-                <span className="text-sm">{strategyMetadata.period.label}</span>
+                <span className="text-muted-foreground">•</span>
+                <span className="text-sm text-muted-foreground">{strategyMetadata.period.label}</span>
               </>
             )}
-            {strategyMetadata?.generatedWithRag && (
+            {dataQuality && (
               <>
-                <span>•</span>
-                <div className="flex items-center gap-1 text-sm">
-                  <Database className="h-3 w-3" />
-                  <span>{strategyMetadata.documentCount} documents</span>
-                </div>
+                <span className="text-muted-foreground">•</span>
+                <DataQualityBadge dataQuality={dataQuality} variant="detailed" />
               </>
             )}
           </div>
@@ -372,7 +465,11 @@ export default function StrategyPage() {
             <CardContent className="space-y-6">
               <div>
                 <h3 className="font-semibold mb-2">Positioning Statement</h3>
-                <p className="text-muted-foreground">{strategy.brandPositioning.statement}</p>
+                <p className="text-muted-foreground">
+                  <CitationText onCitationClick={handleCitationClick}>
+                    {strategy.brandPositioning.statement}
+                  </CitationText>
+                </p>
               </div>
 
               <div>
@@ -381,7 +478,11 @@ export default function StrategyPage() {
                   {strategy.brandPositioning.differentiators.map((diff, i) => (
                     <li key={i} className="flex items-start gap-2">
                       <Badge variant="secondary">{i + 1}</Badge>
-                      <span className="text-sm">{diff}</span>
+                      <span className="text-sm">
+                        <CitationText onCitationClick={handleCitationClick}>
+                          {diff}
+                        </CitationText>
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -393,7 +494,11 @@ export default function StrategyPage() {
                   {strategy.brandPositioning.targetAudienceInsights.map((insight, i) => (
                     <li key={i} className="flex items-start gap-2">
                       <Users className="h-4 w-4 mt-0.5 text-muted-foreground" />
-                      <span className="text-sm">{insight}</span>
+                      <span className="text-sm">
+                        <CitationText onCitationClick={handleCitationClick}>
+                          {insight}
+                        </CitationText>
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -411,7 +516,9 @@ export default function StrategyPage() {
               <CardContent>
                 <ul className="space-y-2">
                   {strategy.swotAnalysis.strengths.map((item, i) => (
-                    <li key={i} className="text-sm">• {item}</li>
+                    <li key={i} className="text-sm">
+                      • <CitationText onCitationClick={handleCitationClick}>{item}</CitationText>
+                    </li>
                   ))}
                 </ul>
               </CardContent>
@@ -424,7 +531,9 @@ export default function StrategyPage() {
               <CardContent>
                 <ul className="space-y-2">
                   {strategy.swotAnalysis.weaknesses.map((item, i) => (
-                    <li key={i} className="text-sm">• {item}</li>
+                    <li key={i} className="text-sm">
+                      • <CitationText onCitationClick={handleCitationClick}>{item}</CitationText>
+                    </li>
                   ))}
                 </ul>
               </CardContent>
@@ -437,7 +546,9 @@ export default function StrategyPage() {
               <CardContent>
                 <ul className="space-y-2">
                   {strategy.swotAnalysis.opportunities.map((item, i) => (
-                    <li key={i} className="text-sm">• {item}</li>
+                    <li key={i} className="text-sm">
+                      • <CitationText onCitationClick={handleCitationClick}>{item}</CitationText>
+                    </li>
                   ))}
                 </ul>
               </CardContent>
@@ -450,7 +561,9 @@ export default function StrategyPage() {
               <CardContent>
                 <ul className="space-y-2">
                   {strategy.swotAnalysis.threats.map((item, i) => (
-                    <li key={i} className="text-sm">• {item}</li>
+                    <li key={i} className="text-sm">
+                      • <CitationText onCitationClick={handleCitationClick}>{item}</CitationText>
+                    </li>
                   ))}
                 </ul>
               </CardContent>
@@ -463,15 +576,21 @@ export default function StrategyPage() {
             {strategy.contentPillars.map((pillar, i) => (
               <Card key={i}>
                 <CardHeader>
-                  <CardTitle>{pillar.name}</CardTitle>
-                  <CardDescription>{pillar.description}</CardDescription>
+                  <CardTitle>
+                    <CitationText onCitationClick={handleCitationClick}>{pillar.name}</CitationText>
+                  </CardTitle>
+                  <CardDescription>
+                    <CitationText onCitationClick={handleCitationClick}>{pillar.description}</CitationText>
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
                     <h4 className="font-semibold text-sm mb-2">Objectives</h4>
                     <ul className="space-y-1">
                       {pillar.objectives.map((obj, j) => (
-                        <li key={j} className="text-sm text-muted-foreground">• {obj}</li>
+                        <li key={j} className="text-sm text-muted-foreground">
+                          • <CitationText onCitationClick={handleCitationClick}>{obj}</CitationText>
+                        </li>
                       ))}
                     </ul>
                   </div>
@@ -481,7 +600,7 @@ export default function StrategyPage() {
                     ))}
                   </div>
                   <div className="text-sm">
-                    <span className="font-semibold">Frequency:</span> {pillar.frequency}
+                    <span className="font-semibold">Frequency:</span> <CitationText onCitationClick={handleCitationClick}>{pillar.frequency}</CitationText>
                   </div>
                 </CardContent>
               </Card>
@@ -496,21 +615,27 @@ export default function StrategyPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <TrendingUp className="h-5 w-5" />
-                    {goal.goal}
+                    <CitationText onCitationClick={handleCitationClick}>{goal.goal}</CitationText>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Metric:</span>
-                    <span className="text-sm font-semibold">{goal.metric}</span>
+                    <span className="text-sm font-semibold">
+                      <CitationText onCitationClick={handleCitationClick}>{goal.metric}</CitationText>
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Target:</span>
-                    <Badge>{goal.target}</Badge>
+                    <Badge>
+                      <CitationText onCitationClick={handleCitationClick}>{goal.target}</CitationText>
+                    </Badge>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Timeline:</span>
-                    <span className="text-sm">{goal.timeline}</span>
+                    <span className="text-sm">
+                      <CitationText onCitationClick={handleCitationClick}>{goal.timeline}</CitationText>
+                    </span>
                   </div>
                 </CardContent>
               </Card>
@@ -530,7 +655,9 @@ export default function StrategyPage() {
               <CardContent>
                 <ul className="space-y-2">
                   {strategy.contentPlaybook.toneAndVoice.map((item, i) => (
-                    <li key={i} className="text-sm">• {item}</li>
+                    <li key={i} className="text-sm">
+                      • <CitationText onCitationClick={handleCitationClick}>{item}</CitationText>
+                    </li>
                   ))}
                 </ul>
               </CardContent>
@@ -543,7 +670,9 @@ export default function StrategyPage() {
               <CardContent>
                 <ul className="space-y-2">
                   {strategy.contentPlaybook.messagingFramework.map((item, i) => (
-                    <li key={i} className="text-sm">• {item}</li>
+                    <li key={i} className="text-sm">
+                      • <CitationText onCitationClick={handleCitationClick}>{item}</CitationText>
+                    </li>
                   ))}
                 </ul>
               </CardContent>
@@ -556,7 +685,9 @@ export default function StrategyPage() {
               <CardContent>
                 <ul className="space-y-2">
                   {strategy.contentPlaybook.visualGuidelines.map((item, i) => (
-                    <li key={i} className="text-sm">• {item}</li>
+                    <li key={i} className="text-sm">
+                      • <CitationText onCitationClick={handleCitationClick}>{item}</CitationText>
+                    </li>
                   ))}
                 </ul>
               </CardContent>
@@ -584,7 +715,7 @@ export default function StrategyPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <BarChart3 className="h-5 w-5" />
-                    {kpi.category}
+                    <CitationText onCitationClick={handleCitationClick}>{kpi.category}</CitationText>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -598,7 +729,9 @@ export default function StrategyPage() {
                   </div>
                   <div>
                     <h4 className="font-semibold text-sm mb-2">Industry Benchmarks</h4>
-                    <p className="text-sm text-muted-foreground">{kpi.benchmarks}</p>
+                    <p className="text-sm text-muted-foreground">
+                      <CitationText onCitationClick={handleCitationClick}>{kpi.benchmarks}</CitationText>
+                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -606,6 +739,16 @@ export default function StrategyPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Citation Sources Panel */}
+      {citations.length > 0 && (
+        <SourcePanel
+          citations={citations}
+          isExpanded={sourcesExpanded}
+          onExpandedChange={setSourcesExpanded}
+          highlightedCitationNumber={highlightedCitation}
+        />
+      )}
     </div>
   );
 }

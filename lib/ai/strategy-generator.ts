@@ -5,11 +5,15 @@ import {
   searchContentInsights,
   searchAudienceInsights,
   searchCompetitiveInsights,
+  getCitationsForStrategy,
 } from "./vector-search";
 import { buildStrategyContext } from "./context-builder";
 import { db } from "@/lib/db/supabase";
 import { brandDocuments } from "@/lib/db/drizzle-schema";
 import { eq, and } from "drizzle-orm";
+import { StrategyWithCitations, Citation } from "./types/citations";
+import { calculateDataQuality } from "./confidence-scorer";
+import { deduplicateCitations } from "./citation-tracker";
 
 export interface AnnualStrategy {
   swotAnalysis: {
@@ -74,33 +78,70 @@ async function checkBrandHasDocuments(brandId: string): Promise<boolean> {
 }
 
 /**
- * Generate a comprehensive annual social media strategy
+ * Generate a comprehensive annual social media strategy with citations
  */
-export async function generateAnnualStrategy(
+export async function generateAnnualStrategyWithCitations(
   brandProfile: BrandProfile
-): Promise<AnnualStrategy> {
+): Promise<StrategyWithCitations> {
   try {
     // Check if brand has uploaded documents for RAG
     const hasDocuments = await checkBrandHasDocuments(brandProfile.id);
 
     let ragContext = "";
+    let allCitations: Citation[] = [];
+
     if (hasDocuments) {
       try {
+        console.log("Fetching RAG context for brand:", brandProfile.id);
+
         // Retrieve actual brand performance data
         const [performance, content, audience, competitive] = await Promise.all([
-          searchPerformanceData(brandProfile.id),
-          searchContentInsights(brandProfile.id),
-          searchAudienceInsights(brandProfile.id),
-          searchCompetitiveInsights(brandProfile.id),
+          searchPerformanceData(brandProfile.id).catch(e => {
+            console.error("Performance search error:", e);
+            return [];
+          }),
+          searchContentInsights(brandProfile.id).catch(e => {
+            console.error("Content search error:", e);
+            return [];
+          }),
+          searchAudienceInsights(brandProfile.id).catch(e => {
+            console.error("Audience search error:", e);
+            return [];
+          }),
+          searchCompetitiveInsights(brandProfile.id).catch(e => {
+            console.error("Competitive search error:", e);
+            return [];
+          }),
         ]);
 
-        // Build formatted context for AI
-        ragContext = buildStrategyContext({
+        console.log(`RAG search completed - Performance: ${performance.length}, Content: ${content.length}, Audience: ${audience.length}, Competitive: ${competitive.length}`);
+
+        // Build formatted context for AI with citation numbers
+        const { context, citationMap } = buildStrategyContext({
           performance,
           content,
           audience,
           competitive,
         });
+        ragContext = context;
+
+        // Convert citationMap to Citation[] with citation numbers
+        allCitations = Array.from(citationMap.entries()).map(([citationNumber, searchResult]) => ({
+          documentId: searchResult.metadata.documentId,
+          documentName: searchResult.metadata.fileName || "Unknown Document",
+          chunkIndex: searchResult.metadata.chunkIndex || 0,
+          excerpt: searchResult.content.substring(0, 200),
+          relevanceScore: searchResult.score,
+          citationNumber, // Add the citation number
+          metadata: {
+            platform: searchResult.metadata.platform,
+            period: searchResult.metadata.period,
+            category: searchResult.metadata.category,
+            fileName: searchResult.metadata.fileName,
+          },
+        }));
+
+        console.log(`Final citations with numbers: ${allCitations.length} (numbered 1-${citationMap.size})`);
       } catch (error) {
         console.error("Error retrieving RAG context:", error);
         // Continue without RAG if there's an error
@@ -111,15 +152,41 @@ export async function generateAnnualStrategy(
 
     const strategy = await runStructuredPrompt<AnnualStrategy>(prompt, {
       model: "gpt-5-nano",
-      reasoningEffort: "high",
-      verbosity: "high",
+      reasoningEffort: "medium", // Changed from "high" to reduce generation time (high: 2-3min, medium: 1-2min)
+      verbosity: "medium", // Changed from "high" for faster responses
     });
 
-    return strategy;
+    // Calculate data quality metrics
+    const dataQuality = calculateDataQuality(allCitations, brandProfile.id);
+
+    // Return strategy with citations
+    return {
+      strategy,
+      citations: {
+        overall: allCitations,
+        bySection: {
+          // For now, all citations apply to all sections
+          // In a more advanced implementation, we could track which citations
+          // were used for each section during generation
+        },
+      },
+      dataQuality,
+    };
   } catch (error) {
-    console.error("Error in generateAnnualStrategy:", error);
+    console.error("Error in generateAnnualStrategyWithCitations:", error);
     throw error;
   }
+}
+
+/**
+ * Generate a comprehensive annual social media strategy (legacy method)
+ * @deprecated Use generateAnnualStrategyWithCitations instead
+ */
+export async function generateAnnualStrategy(
+  brandProfile: BrandProfile
+): Promise<AnnualStrategy> {
+  const result = await generateAnnualStrategyWithCitations(brandProfile);
+  return result.strategy;
 }
 
 function buildStrategyPrompt(
@@ -147,7 +214,7 @@ ${
 - **Industry**: ${brand.industry}
 - **Description**: ${brand.description}
 - **Target Audience**: ${brand.targetAudience}
-- **Brand Values**: ${Array.isArray(brand.brandValues) ? brand.brandValues.join(", ") : brand.brandValues || "N/A"}
+- **Brand Voice**: ${brand.brandVoice || "N/A"}
 - **Goals**: ${brand.goals || "N/A"}
 - **Competitors**: ${Array.isArray(brand.competitors) ? brand.competitors.join(", ") : brand.competitors || "N/A"}
 
@@ -165,7 +232,7 @@ Create a comprehensive annual social media strategy that includes:
    - Provide insights about the target audience: ${brand.targetAudience}
 
 3. **Content Pillars**: Develop 3-5 main content themes
-   - Each pillar should align with brand values${Array.isArray(brand.brandValues) && brand.brandValues.length > 0 ? ": " + brand.brandValues.join(", ") : ""}
+   - Each pillar should align with brand voice and positioning
    - Include specific content types and posting frequency
    - Connect pillars to business goals
 

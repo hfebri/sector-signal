@@ -1,7 +1,9 @@
 import { db } from "@/lib/db/supabase";
-import { documentChunks } from "@/lib/db/drizzle-schema";
+import { documentChunks, brandDocuments } from "@/lib/db/drizzle-schema";
 import { eq, sql } from "drizzle-orm";
 import { getEmbeddingModelWithFallback } from "@/lib/ai/embeddings";
+import { Citation } from "@/lib/ai/types/citations";
+import { trackCitations } from "@/lib/ai/citation-tracker";
 
 export interface SearchFilters {
   platform?: string; // facebook, instagram, twitter, tiktok
@@ -201,5 +203,50 @@ export async function getBrandContext(
         searchAudienceInsights(brandId),
       ]);
       return [...performance.slice(0, 4), ...content.slice(0, 3), ...audience.slice(0, 3)];
+  }
+}
+
+/**
+ * Convert search results to citations with full document metadata
+ */
+export function convertSearchResultsToCitations(results: SearchResult[]): Citation[] {
+  return trackCitations(results, {
+    minRelevanceScore: 0.15, // Lowered from 0.5 - vector scores of 0.2-0.3 are actually good
+    includeLowRelevance: false,
+  });
+}
+
+/**
+ * Get citations for strategy generation with enhanced metadata
+ */
+export async function getCitationsForStrategy(brandId: string): Promise<Citation[]> {
+  try {
+    console.log("[Citations] Starting citation gathering for brand:", brandId);
+
+    const [performance, content, audience, competitive] = await Promise.all([
+      searchPerformanceData(brandId),
+      searchContentInsights(brandId),
+      searchAudienceInsights(brandId),
+      searchCompetitiveInsights(brandId),
+    ]);
+
+    console.log("[Citations] Search results:", {
+      performance: performance.length,
+      content: content.length,
+      audience: audience.length,
+      competitive: competitive.length,
+    });
+
+    const allResults = [...performance, ...content, ...audience, ...competitive];
+    console.log("[Citations] Total search results:", allResults.length);
+
+    const citations = convertSearchResultsToCitations(allResults);
+    console.log("[Citations] Citations tracked:", citations.length);
+
+    return citations;
+  } catch (error) {
+    console.error("Error getting citations for strategy:", error);
+    // Return empty citations on error to allow strategy generation to continue
+    return [];
   }
 }

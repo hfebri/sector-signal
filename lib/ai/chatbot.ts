@@ -1,7 +1,7 @@
 /**
  * Simple Chatbot AI Module with RAG
  *
- * Uses OpenAI API directly for chatbot responses with RAG
+ * Uses OpenAI GPT-5-nano with Responses API for chatbot responses with RAG
  * (Retrieval-Augmented Generation) to answer questions about brand performance,
  * strategy, and documents.
  */
@@ -12,7 +12,6 @@ import { db } from '@/lib/db/supabase';
 import { brands as brandsTable } from '@/lib/db/drizzle-schema';
 import { eq } from 'drizzle-orm';
 import type { Citation } from './types/citations';
-import OpenAI from 'openai';
 
 export interface ChatMessage {
     role: 'user' | 'assistant';
@@ -25,7 +24,60 @@ export interface ChatResponse {
 }
 
 /**
- * Generate a chat response using OpenAI with RAG
+ * Build input items for the Responses API from messages
+ */
+function buildInputItems(
+    systemPrompt: string,
+    context: string,
+    conversationHistory: ChatMessage[],
+    userMessage: string
+): Array<{ role: string; content: string }> {
+    const items: Array<{ role: string; content: string }> = [];
+
+    // Add system prompt
+    items.push({
+        role: 'developer',
+        content: systemPrompt,
+    });
+
+    // Add context if available
+    if (context) {
+        items.push({
+            role: 'developer',
+            content: `**Relevant Context from Documents:**\n\n${context}\n\nUse this context to answer the user's question. Reference sources using [1], [2], etc.`,
+        });
+    }
+
+    // Add conversation history
+    for (const msg of conversationHistory) {
+        items.push({ role: msg.role, content: msg.content });
+    }
+
+    // Add current message
+    items.push({ role: 'user', content: userMessage });
+
+    return items;
+}
+
+/**
+ * Extract text content from a Responses API response
+ */
+function extractResponseText(response: any): string {
+    let outputText = "";
+    for (const item of response.output) {
+        if (item.type === 'message') {
+            for (const content of item.content) {
+                if (content.type === 'output_text') {
+                    outputText += content.text;
+                }
+            }
+        }
+    }
+    return outputText;
+}
+
+/**
+ * Generate a chat response using GPT-5-nano with RAG
  */
 export async function generateChatResponse(
     brandId: string,
@@ -74,36 +126,25 @@ You help answer questions about brand performance, strategy, content recommendat
 4. Maintain the brand's voice and tone in your responses
 5. Format responses using markdown for readability (headers, lists, etc.)`;
 
-        // 5. Build messages array
-        const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-            { role: 'system', content: systemPrompt },
-        ];
+        // 5. Build input items
+        const input = buildInputItems(systemPrompt, context, conversationHistory, userMessage);
 
-        // Add context if available
-        if (context) {
-            messages.push({
-                role: 'system',
-                content: `**Relevant Context from Documents:**\n\n${context}\n\nUse this context to answer the user's question. Reference sources using [1], [2], etc.`,
-            });
-        }
-
-        // Add conversation history
-        for (const msg of conversationHistory) {
-            messages.push({ role: msg.role, content: msg.content });
-        }
-
-        // Add current message
-        messages.push({ role: 'user', content: userMessage });
-
-        // 6. Call OpenAI API
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            messages,
-            temperature: 0.7,
-            max_tokens: 2000,
+        // 6. Call OpenAI Responses API
+        const response = await openai.responses.create({
+            model: 'gpt-5-nano',
+            input,
+            reasoning: {
+                effort: 'medium',
+            },
+            text: {
+                format: { type: 'text' },
+                verbosity: 'medium',
+            },
+            store: false,
         });
 
-        const content = response.choices[0]?.message?.content || '';
+        // 7. Extract content
+        const content = extractResponseText(response);
 
         console.log('[Chatbot] Response generated, citations:', citations.length);
 
@@ -165,46 +206,35 @@ You help answer questions about brand performance, strategy, content recommendat
 4. Maintain the brand's voice and tone in your responses
 5. Format responses using markdown for readability (headers, lists, etc.)`;
 
-        // 5. Build messages array
-        const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-            { role: 'system', content: systemPrompt },
-        ];
+        // 5. Build input items
+        const input = buildInputItems(systemPrompt, context, conversationHistory, userMessage);
 
-        // Add context if available
-        if (context) {
-            messages.push({
-                role: 'system',
-                content: `**Relevant Context from Documents:**\n\n${context}\n\nU
-        se this context to answer the user's question. Reference sources using [1], [2], etc.`,
-            });
-        }
-
-        // Add conversation history
-        for (const msg of conversationHistory) {
-            messages.push({ role: msg.role, content: msg.content });
-        }
-
-        // Add current message
-        messages.push({ role: 'user', content: userMessage });
-
-        // 6. Call OpenAI API with streaming
-        const stream = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            messages,
-            temperature: 0.7,
-            max_tokens: 2000,
+        // 6. Call OpenAI Responses API with streaming
+        const stream = await openai.responses.create({
+            model: 'gpt-5-nano',
+            input,
+            reasoning: {
+                effort: 'medium',
+            },
+            text: {
+                format: { type: 'text' },
+                verbosity: 'medium',
+            },
+            store: false,
             stream: true,
         });
 
         // 7. Stream the response
         for await (const chunk of stream) {
-            const content = chunk.choices[0]?.delta?.content;
-            if (content) {
-                yield { content };
+            // The Responses API streaming format is different
+            // Extract text from streaming events
+            if (chunk.type === 'response.output_text.delta') {
+                yield { content: chunk.delta?.text || '' };
+            } else if (chunk.type === 'response.output_text.done') {
+                yield { content: chunk.text || '' };
             }
         }
 
-        //send final message with
         // 8. Send final message with citations
         yield { citations, done: true };
 
@@ -220,11 +250,11 @@ You help answer questions about brand performance, strategy, content recommendat
  */
 export async function generateConversationTitle(firstMessage: string): Promise<string> {
     try {
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            messages: [
+        const response = await openai.responses.create({
+            model: 'gpt-5-nano',
+            input: [
                 {
-                    role: 'system',
+                    role: 'developer',
                     content: 'Generate a short, concise title (max 6 words) for a chat conversation based on the user\'s first message. The title should summarize the topic. Return ONLY the title, no quotes or extra text.',
                 },
                 {
@@ -232,11 +262,17 @@ export async function generateConversationTitle(firstMessage: string): Promise<s
                     content: `First message: "${firstMessage}"`,
                 },
             ],
-            temperature: 0.5,
-            max_tokens: 50,
+            reasoning: {
+                effort: 'minimal',
+            },
+            text: {
+                format: { type: 'text' },
+                verbosity: 'low',
+            },
+            store: false,
         });
 
-        const title = response.choices[0]?.message?.content || 'New Chat';
+        const title = extractResponseText(response).trim();
         // Clean up any quotes and limit length
         return title.replace(/^["']|["']$/g, '').substring(0, 50);
     } catch (error) {

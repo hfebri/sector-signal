@@ -723,7 +723,9 @@ export default function StrategyPage() {
                     <h4 className="font-semibold text-sm mb-2">Metrics to Track</h4>
                     <div className="flex flex-wrap gap-2">
                       {(kpi.metrics || []).map((metric, j) => (
-                        <Badge key={j} variant="outline">{metric}</Badge>
+                        <Badge key={j} variant="outline">
+                          {typeof metric === 'string' ? metric : metric.name || `${metric.value}${metric.benchmark ? ` (benchmark: ${metric.benchmark})` : ''}`}
+                        </Badge>
                       ))}
                     </div>
                   </div>

@@ -8,8 +8,9 @@ export interface BrandProfile {
   targetAudience: string;
   brandVoice: string;
   competitors: string[];
+  brandValues: string[];
   goals: string;
-  rivaliqLandscapeId?: string; // RivalIQ landscape ID for competitor tracking
+  rivaliqLandscapeId?: string | null; // RivalIQ landscape ID for competitor tracking
   createdAt: Date;
   updatedAt: Date;
 }

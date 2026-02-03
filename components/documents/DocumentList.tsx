@@ -2,11 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
-import { Button } from "@/ui/button";
+import { Button } from "@/components/ui/button";
 import { Play, Trash2, FileText } from "lucide-react";
-import { db } from "@/lib/db/supabase";
-import { brandDocuments } from "@/lib/db/drizzle-schema";
-import { eq } from "drizzle-orm";
 
 interface Document {
   id: string;
@@ -37,12 +34,14 @@ export function DocumentList({ brandId, onRefresh }: DocumentListProps) {
 
   const loadDocuments = async () => {
     try {
-      const docs = await db
-        .select()
-        .from(brandDocuments)
-        .where(eq(brandDocuments.brandId, brandId));
+      const response = await fetch(`/api/documents?brandId=${encodeURIComponent(brandId)}`);
+      const data = await response.json();
 
-      setDocuments(docs as Document[]);
+      if (data.success) {
+        setDocuments(data.documents as Document[]);
+      } else {
+        console.error("Failed to load documents:", data.error);
+      }
     } catch (error) {
       console.error("Failed to load documents:", error);
     } finally {
@@ -99,13 +98,17 @@ export function DocumentList({ brandId, onRefresh }: DocumentListProps) {
     }
 
     try {
-      // Delete from database (will cascade to chunks and storage)
-      await db
-        .delete(brandDocuments)
-        .where(eq(brandDocuments.id, documentId));
+      const response = await fetch(`/api/documents?id=${encodeURIComponent(documentId)}`, {
+        method: "DELETE",
+      });
 
-      await loadDocuments();
-      onRefresh?.();
+      const data = await response.json();
+      if (data.success) {
+        await loadDocuments();
+        onRefresh?.();
+      } else {
+        alert("Failed to delete document: " + (data.error || "Unknown error"));
+      }
     } catch (error) {
       console.error("Delete error:", error);
       alert("Failed to delete document");
@@ -210,16 +213,16 @@ export function DocumentList({ brandId, onRefresh }: DocumentListProps) {
             <div className="flex items-center gap-2 flex-shrink-0">
               {(doc.processingStatus === "pending" ||
                 doc.processingStatus === "failed") && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleProcess(doc.id)}
-                  disabled={processingIds.has(doc.id)}
-                >
-                  <Play className="h-3 w-3 mr-1" />
-                  Process
-                </Button>
-              )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleProcess(doc.id)}
+                    disabled={processingIds.has(doc.id)}
+                  >
+                    <Play className="h-3 w-3 mr-1" />
+                    Process
+                  </Button>
+                )}
               <Button
                 size="sm"
                 variant="outline"

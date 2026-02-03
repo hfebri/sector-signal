@@ -15,6 +15,13 @@
       "when": 1759898549126,
       "tag": "0001_flawless_tyrannus",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1770090350266,
+      "tag": "0002_third_timeslip",
+      "breakpoints": true
     }
   ]
 }

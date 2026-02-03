@@ -467,7 +467,7 @@ export default function StrategyPage() {
                 <h3 className="font-semibold mb-2">Positioning Statement</h3>
                 <p className="text-muted-foreground">
                   <CitationText onCitationClick={handleCitationClick}>
-                    {strategy.brandPositioning.statement}
+                    {strategy.brandPositioning?.statement || "No positioning statement available"}
                   </CitationText>
                 </p>
               </div>
@@ -475,7 +475,7 @@ export default function StrategyPage() {
               <div>
                 <h3 className="font-semibold mb-2">Key Differentiators</h3>
                 <ul className="space-y-2">
-                  {strategy.brandPositioning.differentiators.map((diff, i) => (
+                  {(strategy.brandPositioning?.differentiators || []).map((diff, i) => (
                     <li key={i} className="flex items-start gap-2">
                       <Badge variant="secondary">{i + 1}</Badge>
                       <span className="text-sm">
@@ -491,7 +491,7 @@ export default function StrategyPage() {
               <div>
                 <h3 className="font-semibold mb-2">Target Audience Insights</h3>
                 <ul className="space-y-2">
-                  {strategy.brandPositioning.targetAudienceInsights.map((insight, i) => (
+                  {(strategy.brandPositioning?.targetAudienceInsights || []).map((insight, i) => (
                     <li key={i} className="flex items-start gap-2">
                       <Users className="h-4 w-4 mt-0.5 text-muted-foreground" />
                       <span className="text-sm">
@@ -515,7 +515,7 @@ export default function StrategyPage() {
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {strategy.swotAnalysis.strengths.map((item, i) => (
+                  {(strategy.swotAnalysis?.strengths || []).map((item, i) => (
                     <li key={i} className="text-sm">
                       • <CitationText onCitationClick={handleCitationClick}>{item}</CitationText>
                     </li>
@@ -530,7 +530,7 @@ export default function StrategyPage() {
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {strategy.swotAnalysis.weaknesses.map((item, i) => (
+                  {(strategy.swotAnalysis?.weaknesses || []).map((item, i) => (
                     <li key={i} className="text-sm">
                       • <CitationText onCitationClick={handleCitationClick}>{item}</CitationText>
                     </li>
@@ -545,7 +545,7 @@ export default function StrategyPage() {
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {strategy.swotAnalysis.opportunities.map((item, i) => (
+                  {(strategy.swotAnalysis?.opportunities || []).map((item, i) => (
                     <li key={i} className="text-sm">
                       • <CitationText onCitationClick={handleCitationClick}>{item}</CitationText>
                     </li>
@@ -560,7 +560,7 @@ export default function StrategyPage() {
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {strategy.swotAnalysis.threats.map((item, i) => (
+                  {(strategy.swotAnalysis?.threats || []).map((item, i) => (
                     <li key={i} className="text-sm">
                       • <CitationText onCitationClick={handleCitationClick}>{item}</CitationText>
                     </li>
@@ -573,7 +573,7 @@ export default function StrategyPage() {
 
         <TabsContent value="pillars" className="space-y-4">
           <div className="grid grid-cols-1 gap-4">
-            {strategy.contentPillars.map((pillar, i) => (
+            {(strategy.contentPillars || []).map((pillar, i) => (
               <Card key={i}>
                 <CardHeader>
                   <CardTitle>
@@ -587,7 +587,7 @@ export default function StrategyPage() {
                   <div>
                     <h4 className="font-semibold text-sm mb-2">Objectives</h4>
                     <ul className="space-y-1">
-                      {pillar.objectives.map((obj, j) => (
+                      {(pillar.objectives || []).map((obj, j) => (
                         <li key={j} className="text-sm text-muted-foreground">
                           • <CitationText onCitationClick={handleCitationClick}>{obj}</CitationText>
                         </li>
@@ -595,12 +595,12 @@ export default function StrategyPage() {
                     </ul>
                   </div>
                   <div className="flex gap-2 flex-wrap">
-                    {pillar.contentTypes.map((type, j) => (
+                    {(pillar.contentTypes || []).map((type, j) => (
                       <Badge key={j} variant="outline">{type}</Badge>
                     ))}
                   </div>
                   <div className="text-sm">
-                    <span className="font-semibold">Frequency:</span> <CitationText onCitationClick={handleCitationClick}>{pillar.frequency}</CitationText>
+                    <span className="font-semibold">Frequency:</span> <CitationText onCitationClick={handleCitationClick}>{pillar.frequency || "N/A"}</CitationText>
                   </div>
                 </CardContent>
               </Card>
@@ -610,7 +610,7 @@ export default function StrategyPage() {
 
         <TabsContent value="goals" className="space-y-4">
           <div className="grid grid-cols-1 gap-4">
-            {strategy.annualGoals.map((goal, i) => (
+            {(strategy.annualGoals || []).map((goal, i) => (
               <Card key={i}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -654,7 +654,7 @@ export default function StrategyPage() {
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {strategy.contentPlaybook.toneAndVoice.map((item, i) => (
+                  {(strategy.contentPlaybook?.toneAndVoice || []).map((item, i) => (
                     <li key={i} className="text-sm">
                       • <CitationText onCitationClick={handleCitationClick}>{item}</CitationText>
                     </li>
@@ -669,7 +669,7 @@ export default function StrategyPage() {
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {strategy.contentPlaybook.messagingFramework.map((item, i) => (
+                  {(strategy.contentPlaybook?.messagingFramework || []).map((item, i) => (
                     <li key={i} className="text-sm">
                       • <CitationText onCitationClick={handleCitationClick}>{item}</CitationText>
                     </li>
@@ -684,7 +684,7 @@ export default function StrategyPage() {
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {strategy.contentPlaybook.visualGuidelines.map((item, i) => (
+                  {(strategy.contentPlaybook?.visualGuidelines || []).map((item, i) => (
                     <li key={i} className="text-sm">
                       • <CitationText onCitationClick={handleCitationClick}>{item}</CitationText>
                     </li>
@@ -699,7 +699,7 @@ export default function StrategyPage() {
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
-                  {strategy.contentPlaybook.contentFormats.map((format, i) => (
+                  {(strategy.contentPlaybook?.contentFormats || []).map((format, i) => (
                     <Badge key={i} variant="secondary">{format}</Badge>
                   ))}
                 </div>
@@ -710,19 +710,19 @@ export default function StrategyPage() {
 
         <TabsContent value="kpis" className="space-y-4">
           <div className="grid grid-cols-1 gap-4">
-            {strategy.kpiFramework.map((kpi, i) => (
+            {(strategy.kpiFramework || []).map((kpi, i) => (
               <Card key={i}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <BarChart3 className="h-5 w-5" />
-                    <CitationText onCitationClick={handleCitationClick}>{kpi.category}</CitationText>
+                    <CitationText onCitationClick={handleCitationClick}>{kpi.category || "Uncategorized"}</CitationText>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
                     <h4 className="font-semibold text-sm mb-2">Metrics to Track</h4>
                     <div className="flex flex-wrap gap-2">
-                      {kpi.metrics.map((metric, j) => (
+                      {(kpi.metrics || []).map((metric, j) => (
                         <Badge key={j} variant="outline">{metric}</Badge>
                       ))}
                     </div>
@@ -730,7 +730,7 @@ export default function StrategyPage() {
                   <div>
                     <h4 className="font-semibold text-sm mb-2">Industry Benchmarks</h4>
                     <p className="text-sm text-muted-foreground">
-                      <CitationText onCitationClick={handleCitationClick}>{kpi.benchmarks}</CitationText>
+                      <CitationText onCitationClick={handleCitationClick}>{kpi.benchmarks || "No benchmarks available"}</CitationText>
                     </p>
                   </div>
                 </CardContent>

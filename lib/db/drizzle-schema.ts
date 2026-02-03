@@ -77,6 +77,23 @@ export const annualStrategies = pgTable("annual_strategies", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+export const conversations = pgTable("conversations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  brandId: uuid("brand_id").notNull().references(() => brands.id, { onDelete: "cascade" }),
+  title: text("title").notNull().default("New Chat"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const messages = pgTable("messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  role: text("role").notNull(), // "user" or "assistant"
+  content: text("content").notNull(),
+  citations: jsonb("citations"), // Array of citations used for this message
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export type Brand = typeof brands.$inferSelect;
 export type NewBrand = typeof brands.$inferInsert;
 export type BrandDocument = typeof brandDocuments.$inferSelect;
@@ -85,3 +102,7 @@ export type DocumentChunk = typeof documentChunks.$inferSelect;
 export type NewDocumentChunk = typeof documentChunks.$inferInsert;
 export type AnnualStrategy = typeof annualStrategies.$inferSelect;
 export type NewAnnualStrategy = typeof annualStrategies.$inferInsert;
+export type Conversation = typeof conversations.$inferSelect;
+export type NewConversation = typeof conversations.$inferInsert;
+export type Message = typeof messages.$inferSelect;
+export type NewMessage = typeof messages.$inferInsert;

@@ -6,11 +6,18 @@ interface DocumentStatusBadgeProps {
   className?: string;
 }
 
+interface StatusConfig {
+  icon: typeof Loader2;
+  label: string;
+  className: string;
+  animate?: boolean;
+}
+
 export function DocumentStatusBadge({
   status,
   className,
 }: DocumentStatusBadgeProps) {
-  const config = {
+  const config: Record<string, StatusConfig> = {
     pending: {
       icon: Clock,
       label: "Pending",

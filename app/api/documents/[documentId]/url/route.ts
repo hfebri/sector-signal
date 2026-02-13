@@ -6,24 +6,31 @@ import { eq } from "drizzle-orm";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { documentId: string } }
+  { params }: { params: Promise<{ documentId: string }> }
 ) {
   try {
-    const { documentId } = params;
+    const { documentId } = await params;
+
+    console.log("[Document URL] Fetching for documentId:", documentId);
 
     // Get document from database
-    const [document] = await db
+    const documents = await db
       .select()
       .from(brandDocuments)
       .where(eq(brandDocuments.id, documentId))
       .limit(1);
 
+    const document = documents[0];
+
     if (!document) {
+      console.error("[Document URL] Document not found:", documentId);
       return NextResponse.json(
         { error: "Document not found" },
         { status: 404 }
       );
     }
+
+    console.log("[Document URL] Document found:", document.fileName, "storagePath:", document.storagePath);
 
     // Generate signed URL from Supabase Storage (valid for 1 hour)
     const { data, error } = await supabase.storage
@@ -31,12 +38,14 @@ export async function GET(
       .createSignedUrl(document.storagePath, 3600);
 
     if (error) {
-      console.error("Error creating signed URL:", error);
+      console.error("[Document URL] Error creating signed URL:", error);
       return NextResponse.json(
         { error: "Failed to generate document URL" },
         { status: 500 }
       );
     }
+
+    console.log("[Document URL] Signed URL generated successfully");
 
     return NextResponse.json({
       url: data.signedUrl,
@@ -44,7 +53,7 @@ export async function GET(
       fileType: document.fileType,
     });
   } catch (error) {
-    console.error("Error fetching document URL:", error);
+    console.error("[Document URL] Error fetching document URL:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

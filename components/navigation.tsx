@@ -16,7 +16,7 @@ import {
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: Home },
-  { name: "AI Chatbot", href: "/chatbot", icon: MessageCircle },
+  { name: "AI Assistant", href: "/chatbot", icon: MessageCircle },
   { name: "Create Brand", href: "/brand/create", icon: PlusCircle },
   { name: "Annual Strategy", href: "/strategy", icon: Target },
   { name: "Monthly Planning", href: "/monthly-plan", icon: Calendar },

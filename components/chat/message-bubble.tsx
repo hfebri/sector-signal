@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { User, Bot, FileText } from "lucide-react";
+import { User, Bot, FileText, ExternalLink, ChevronDown } from "lucide-react";
 import { Citation } from "@/lib/ai/types/citations";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +15,56 @@ export interface Message {
     createdAt?: Date;
 }
 
+async function openDocument(citation: Citation) {
+    try {
+        // Check if this is a sample document (from public/reports)
+        if (citation.documentId.startsWith("sample-")) {
+            // For sample files, trigger download
+            const fileName = citation.metadata.fileName || citation.documentName;
+            const link = document.createElement("a");
+            link.href = `/reports/${fileName}`;
+            link.download = fileName;
+            link.target = "_blank";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            return;
+        }
+
+        // For stored documents, fetch the signed URL
+        const response = await fetch(`/api/documents/${citation.documentId}/url`);
+        const data = await response.json();
+
+        if (response.ok && data.url) {
+            // Create download link and trigger click
+            const link = document.createElement("a");
+            link.href = data.url;
+            link.download = data.fileName || citation.documentName;
+            link.target = "_blank";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } else if (response.status === 404 || data.error?.includes("not found")) {
+            // Document not found in database, try fallback to public folder
+            console.warn("Document not found in database, trying public folder fallback");
+            const fileName = citation.metadata.fileName || citation.documentName;
+            const link = document.createElement("a");
+            link.href = `/reports/${fileName}`;
+            link.download = fileName;
+            link.target = "_blank";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } else if (data.error) {
+            console.error("Failed to get document URL:", data.error);
+            alert(`Could not open document: ${data.error}`);
+        }
+    } catch (error) {
+        console.error("Error opening document:", error);
+        alert("Failed to open document. The file may no longer be available.");
+    }
+}
+
 interface MessageBubbleProps {
     message: Message;
     showCitations?: boolean;
@@ -22,6 +73,11 @@ interface MessageBubbleProps {
 export function MessageBubble({ message, showCitations = true }: MessageBubbleProps) {
     const isUser = message.role === "user";
     const hasCitations = message.citations && message.citations.length > 0;
+    const [showAllCitations, setShowAllCitations] = useState(false);
+
+    const displayedCitations = showAllCitations
+        ? message.citations || []
+        : (message.citations || []).slice(0, 5);
 
     return (
         <div className={cn("flex w-full gap-2 sm:gap-3 mb-3 sm:mb-4", isUser ? "flex-row-reverse" : "flex-row")}>
@@ -64,23 +120,33 @@ export function MessageBubble({ message, showCitations = true }: MessageBubblePr
                 {/* Citations for assistant messages */}
                 {!isUser && showCitations && hasCitations && (
                     <div className="mt-1.5 sm:mt-2 flex flex-wrap gap-1 sm:gap-1.5">
-                        {message.citations?.slice(0, 5).map((citation, idx) => (
+                        {displayedCitations.map((citation, idx) => (
                             <Badge
                                 key={idx}
                                 variant="secondary"
-                                className="text-[10px] sm:text-xs font-normal px-1.5 py-0.5 sm:px-2 sm:py-1 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors cursor-pointer max-w-[140px] sm:max-w-[180px] truncate"
+                                className="text-[10px] sm:text-xs font-normal px-1.5 py-0.5 sm:px-2 sm:py-1 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 hover:border-emerald-500 dark:hover:border-emerald-600 border border-transparent transition-all cursor-pointer max-w-[140px] sm:max-w-[180px] truncate group"
                                 title={citation.documentName}
+                                onClick={() => openDocument(citation)}
                             >
                                 <FileText className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-1 inline-flex" />
                                 {citation.metadata.platform
                                     ? `${citation.metadata.platform}: `
                                     : ""}
                                 {citation.documentName}
+                                <ExternalLink className="h-2 w-2 sm:h-2.5 sm:w-2.5 ml-1 opacity-0 group-hover:opacity-70 transition-opacity inline-flex" />
                             </Badge>
                         ))}
                         {(message.citations?.length ?? 0) > 5 && (
-                            <Badge variant="outline" className="text-[10px] sm:text-xs px-1.5 py-0.5 sm:px-2 sm:py-1">
-                                +{(message.citations?.length ?? 0) - 5} more
+                            <Badge
+                                variant="outline"
+                                className="text-[10px] sm:text-xs px-1.5 py-0.5 sm:px-2 sm:py-1 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer transition-colors"
+                                onClick={() => setShowAllCitations(!showAllCitations)}
+                            >
+                                {showAllCitations ? (
+                                    <span className="flex items-center gap-1">Show less <ChevronDown className="h-2.5 w-2.5 sm:h-3 sm:w-3 rotate-180" /></span>
+                                ) : (
+                                    <span className="flex items-center gap-1">+{(message.citations?.length ?? 0) - 5} more <ChevronDown className="h-2.5 w-2.5 sm:h-3 sm:w-3" /></span>
+                                )}
                             </Badge>
                         )}
                     </div>

@@ -227,10 +227,10 @@ export default function ChatbotPage() {
     }
 
     const suggestions = [
-        { icon: BarChart3, text: "How is my brand performing on Instagram?" },
-        { icon: FileText, text: "What are my top performing content types?" },
-        { icon: Lightbulb, text: "Summarize my strategy for this quarter" },
-        { icon: Sparkles, text: "What content should I create next week?" },
+        { icon: BarChart3, text: "Analyze my Instagram performance metrics" },
+        { icon: FileText, text: "Overview my Competitors" },
+        { icon: Lightbulb, text: "Generate monthly performance report" },
+        { icon: Sparkles, text: "Find growth opportunities in my data" },
     ];
 
     return (

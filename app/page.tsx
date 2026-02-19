@@ -135,7 +135,7 @@ export default function Dashboard() {
               </div>
               <span>Create monthly content plans and campaigns</span>
             </div>
-            <Button variant="outline" size="sm" onClick={() => router.push('/monthly')}>
+            <Button variant="outline" size="sm" onClick={() => router.push('/monthly-plan')}>
               Plan Content
             </Button>
           </div>
